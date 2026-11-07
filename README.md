@@ -2,7 +2,7 @@
 
 The core of [Neuvex](https://neuvex.cloud): the control plane, gateway and sandbox infrastructure, built on Neon Postgres and Cloudflare Workers.
 
-The full design is in the [Neuvex on Neon infrastructure plan](https://claude.ai/artifact/LNs4S9XGf3bwAKnevrVgPN). This repo is at **Phase 2 (gateway and audit)**: the control plane on Neon, a contract engine, the gateway Worker that checks every agent call against its contract, and an append-only audit log with daily hash checkpoints.
+The full design is in the [Neuvex on Neon infrastructure plan](https://claude.ai/artifact/LNs4S9XGf3bwAKnevrVgPN). This repo is at **Phase 3 (vendor projects and sandboxes), part 1**: the control plane on Neon, a contract engine, the gateway Worker with its audit log, and a provisioner that gives each vendor its own Neon project with a fixtures branch. Next: the gateway writing audit events into each vendor's project (part 2), then sandbox branches, publish and rollback (part 3).
 
 ## Control plane
 
@@ -73,6 +73,37 @@ The `audit` schema in the control-plane database (in vendor projects from Phase 
 
 The gateway can insert events and read checkpoints for its own vendor. It cannot read, change or delete events.
 
+## Vendor projects
+
+Every vendor gets its own Neon project, `nvx-<slug>`, in the organization:
+
+```
+nvx-<slug>
+├── production   root branch: the vendor's audit log, and later its molds' data
+└── fixtures     schema-only root branch: the same schema with no real rows;
+                 agent sandboxes will branch from here
+```
+
+**The vendor template** (`packages/vendor-db`) is what every vendor project runs, applied as the project's owner role:
+
+- `neuvex.settings`: which vendor the project belongs to (set once, then fixed) and its audit retention.
+- `neuvex_gateway`: the gateway's role there. It can insert audit events for that vendor only, read checkpoints, and run maintenance. It can't read, change or delete events, or create anything.
+- `audit.events` and `audit.checkpoints`: the same append-only, hash-chained log as the control plane's. Retention drops whole daily partitions.
+
+Template migrations are recorded in `neuvex.template_migrations` with a checksum. The runner refuses to continue if an applied migration was edited, or if the project is newer than the code.
+
+**The provisioner** (`packages/provisioner`) does it in steps and saves each step in `control.vendors` before the next:
+
+1. Create the Neon project with a `production` root branch (or find one an earlier run made).
+2. Apply the template to production and record the vendor and its retention.
+3. Give `neuvex_gateway` a random password, and store its connection string encrypted (AES-256-GCM, bound to the vendor ID) in `vendors.gateway_db_url_enc`.
+4. Create `fixtures` as a schema-only branch, and record the template migrations it was copied with.
+5. Mark the vendor `ready` with its template version.
+
+It's safe to run again. After a failure (`provision_status = 'failed'`, with `provision_error`), it picks up where it stopped. On a ready vendor it applies any new template migrations and changes nothing else. The vendor row has to exist first. The provisioner can't create vendors, rename them or change tiers.
+
+Run it from GitHub: **Actions → Provision vendor → Run workflow**, then enter the slug.
+
 ## Layout
 
 ```
@@ -90,6 +121,11 @@ neuvex-core/
     scripts/seed-demo.ts       demo vendor with three email primitives
     scripts/create-key.ts      a vendor API key, printed once
   packages/contracts/          contract rules: evaluate() a call, shape() the data
+  packages/sql/                the Db interface: Neon over HTTP; PGlite in tests
+  packages/neon-api/           Neon API client: projects, branches, connection strings, schema diff
+  packages/vendor-db/          the template every vendor project runs, and its runner
+  packages/crypto/             AES-256-GCM for secrets stored in the control plane
+  packages/provisioner/        gives a vendor its Neon project (provisionVendor, and a script)
   apps/gateway/                the gateway Worker
     src/app.ts                 routes, validation, decisions
     src/store.ts               the gateway's SQL, over Neon's HTTP driver
@@ -100,9 +136,8 @@ neuvex-core/
     db-preview.yml             a Neon branch per pull request, migrated and diffed
     db-migrate.yml             migrates production after a merge to main
     gateway-deploy.yml         migrates, deploys the gateway and smoke-tests it
+    provision-vendor.yml       provisions one vendor's Neon project, started by hand
 ```
-
-Later phases add `apps/provisioner` and `packages/vendor-db`.
 
 ## Neon
 
@@ -120,10 +155,11 @@ Roles were created with SQL, not in the Neon Console, so they get only the right
 | --- | --- | --- |
 | `neuvex_migrator` | CI | Create schemas; create and change tables in `control` |
 | `neuvex_gateway` | The gateway Worker | Read primitives and contracts, write audit events and usage, run audit maintenance. Always limited to one vendor by row-level security |
+| `neuvex_provisioner` | The Provision vendor workflow | Find a vendor by slug, read it, update only its provisioning columns, one vendor at a time |
 | `waitlist_writer` | The `neuvex-waitlist` Cloudflare Worker | Insert into `public.waitlist`, nothing else |
 | `neondb_owner` | People, in the Neon Console | Everything. Never put it in an app or CI |
 
-Phase 3 adds `neuvex_provisioner`. The gateway role's grants live in migration 0003, not here.
+The roles' grants live in migrations (0003 for the gateway, 0005 for the provisioner). Only the roles themselves are made by hand.
 
 ### One-time database setup (done 7 November 2026)
 
@@ -144,6 +180,22 @@ GRANT USAGE ON SCHEMA control TO neuvex_migrator WITH GRANT OPTION;
 
 Migration 0003 stops with a clear error if this is missing.
 
+Added for Phase 3, before migration 0005 (which stops with a clear error without it). It creates the provisioner's role with a password generated by the database, and prints `role:password`:
+
+```sql
+CREATE OR REPLACE FUNCTION pg_temp.make_login(r text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE pw text := 'Nx_' || replace(gen_random_uuid()::text, '-', '') || upper(substr(md5(random()::text), 1, 8));
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', r, pw);
+  ELSE
+    EXECUTE format('CREATE ROLE %I WITH LOGIN PASSWORD %L', r, pw);
+  END IF;
+  RETURN r || ':' || pw;
+END $$;
+SELECT pg_temp.make_login('neuvex_provisioner');
+```
+
 `migrations/0000_baseline.sql` records this starting point.
 
 ## GitHub Actions secrets
@@ -156,6 +208,10 @@ Migration 0003 stops with a clear error if this is missing.
 | `GATEWAY_DATABASE_URL` | `neuvex_gateway` on production's pooled address. Becomes the Worker's `DATABASE_URL` secret on deploy |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API token from the "Edit Cloudflare Workers" template |
 | `CLOUDFLARE_ACCOUNT_ID` | The Cloudflare account ID |
+| `NEON_ORG_API_KEY` | Neon **organization** API key (can create projects). Used only by Provision vendor |
+| `NEON_ORG_ID` | The Neon organization ID, `org-...` |
+| `PROVISIONER_DATABASE_URL` | `neuvex_provisioner` on production's pooled address |
+| `VENDOR_DB_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts vendor connection strings; the gateway gets the same key in part 2. Never change it without re-encrypting |
 
 ## How a database change ships
 
@@ -190,6 +246,7 @@ npm run db:migrate                           # apply migrations to DATABASE_URL
 npm run db:seed:demo                         # add the demo vendor (refuses production without --allow-production)
 npm run db:create-key -- <vendor-slug>       # make a vendor API key (add --scopes a,b to change scopes)
 npm run gateway:dev                          # run the gateway locally (needs apps/gateway/.dev.vars with DATABASE_URL)
+npm run provision -w @neuvex/provisioner -- <slug>   # provision a vendor (needs the four env vars in the script's header)
 npm run typecheck
 ```
 
