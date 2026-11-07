@@ -43,6 +43,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Runs every migration on an in-memory Postgres and checks tenant isolation,
+      # immutability and data rules before anything touches Neon.
+      - name: Test
+        run: npm test
+
       # Start from a fresh copy of production on every push, so an edited
       # migration is tested from scratch rather than on top of its older version.
       - name: Delete previous preview branch
