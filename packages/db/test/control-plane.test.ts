@@ -38,6 +38,7 @@ beforeAll(async () => {
     CREATE SCHEMA control;
     CREATE ROLE neuvex_gateway LOGIN PASSWORD 'test';
     CREATE ROLE neuvex_migrator LOGIN PASSWORD 'test';
+    CREATE ROLE neuvex_provisioner LOGIN PASSWORD 'test';
     GRANT CREATE ON DATABASE ${database} TO neuvex_migrator;
     GRANT USAGE, CREATE ON SCHEMA control TO neuvex_migrator;
     GRANT USAGE ON SCHEMA control TO neuvex_migrator WITH GRANT OPTION;
@@ -71,7 +72,7 @@ afterAll(async () => {
 describe("migrations", () => {
   it("run as neuvex_migrator and are recorded", async () => {
     const [row] = await rows("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
-    expect(row).toEqual({ n: 4 });
+    expect(row).toEqual({ n: 6 });
   });
 
   it("make neuvex_migrator the owner of every control table", async () => {

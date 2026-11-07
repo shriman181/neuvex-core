@@ -1,0 +1,20 @@
+{
+  "name": "@neuvex/sql",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The database interface shared by the gateway, provisioner and vendor template: Neon over HTTP, PGlite in tests.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15"
+  }
+}

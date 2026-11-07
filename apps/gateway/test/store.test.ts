@@ -2,7 +2,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { createTestDatabase } from "@neuvex/db/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handle, sha256Hex } from "../src/app.js";
-import { createStore, type Db } from "../src/store.js";
+import { pgliteDb } from "@neuvex/sql/testing";
+import { createStore } from "../src/store.js";
 
 // The store's real SQL, run as neuvex_gateway against every migration, so row-level
 // security, the grants and the definer functions are all exercised end to end.
@@ -17,20 +18,7 @@ let pg: PGlite;
 const rows = async (sql: string, params: unknown[] = []) =>
   (await pg.query<Record<string, unknown>>(sql, params)).rows;
 
-/** Same contract as neonDb, but every statement runs as neuvex_gateway. */
-function gatewayDb(db: PGlite): Db {
-  const run = (qs: { text: string; params: unknown[] }[]) =>
-    db.transaction(async (tx) => {
-      await tx.exec("SET LOCAL ROLE neuvex_gateway");
-      const out: Record<string, unknown>[][] = [];
-      for (const { text, params } of qs) out.push((await tx.query<Record<string, unknown>>(text, params)).rows);
-      return out;
-    });
-  return {
-    query: async (q) => (await run([q]))[0] ?? [],
-    transaction: run,
-  };
-}
+const gatewayDb = (db: PGlite) => pgliteDb(db, "neuvex_gateway");
 
 async function check(key: string, body: unknown) {
   const pending: Promise<unknown>[] = [];

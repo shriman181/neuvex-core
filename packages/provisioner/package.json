@@ -1,0 +1,25 @@
+{
+  "name": "@neuvex/provisioner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gives each vendor its own Neon project: template, gateway login and fixtures branch.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "provision": "tsx scripts/provision.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neuvex/crypto": "*",
+    "@neuvex/neon-api": "*",
+    "@neuvex/sql": "*",
+    "@neuvex/vendor-db": "*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@neuvex/db": "*"
+  }
+}

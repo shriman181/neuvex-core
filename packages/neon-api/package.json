@@ -1,0 +1,14 @@
+{
+  "name": "@neuvex/neon-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Small Neon API v2 client: projects, branches, connection strings, schema diffs.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

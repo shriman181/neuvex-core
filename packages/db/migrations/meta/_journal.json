@@ -29,6 +29,20 @@
       "when": 1794045084812,
       "tag": "0003_audit_log_and_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794063119020,
+      "tag": "0004_vendor_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794063128298,
+      "tag": "0005_provisioner_access",
+      "breakpoints": true
     }
   ]
 }

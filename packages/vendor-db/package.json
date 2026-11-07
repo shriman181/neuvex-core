@@ -1,0 +1,20 @@
+{
+  "name": "@neuvex/vendor-db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The template every vendor's Neon project runs: settings, roles and the vendor's own audit log.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neuvex/sql": "*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15"
+  }
+}
