@@ -1,0 +1,100 @@
+name: Database preview
+
+# Every pull request that touches the database gets its own Neon branch, copied from
+# production. Migrations run there as neuvex_migrator, Neon's schema diff is posted
+# as a PR comment, and the branch is deleted when the PR closes. Branches also
+# expire after 7 days, so nothing is left behind if cleanup fails.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - "packages/db/**"
+      - ".github/workflows/db-preview.yml"
+
+concurrency:
+  group: db-preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  BRANCH_NAME: preview/pr-${{ github.event.number }}
+
+jobs:
+  preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check migration files
+        run: npm run db:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Start from a fresh copy of production on every push, so an edited
+      # migration is tested from scratch rather than on top of its older version.
+      - name: Delete previous preview branch
+        uses: neondatabase/delete-branch-action@v3
+        continue-on-error: true
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: ${{ env.BRANCH_NAME }}
+
+      - name: Set branch expiry
+        run: echo "EXPIRES_AT=$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Create preview branch
+        id: branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch_name: ${{ env.BRANCH_NAME }}
+          parent_branch: production
+          expires_at: ${{ env.EXPIRES_AT }}
+
+      # Child branches copy roles and passwords from production, so the migrator's
+      # connection string works on the preview branch once its host is swapped in.
+      - name: Point neuvex_migrator at the preview branch
+        env:
+          BASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+          PREVIEW_HOST: ${{ steps.branch.outputs.db_host }}
+        run: |
+          url=$(printf '%s' "$BASE_URL" | sed -E "s#@[^/]+/#@${PREVIEW_HOST}/#")
+          echo "::add-mask::$url"
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Run migrations on the preview branch
+        run: npm run db:migrate
+
+      - name: Post schema diff
+        uses: neondatabase/schema-diff-action@v1
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          compare_branch: ${{ env.BRANCH_NAME }}
+          base_branch: production
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete preview branch
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: ${{ env.BRANCH_NAME }}

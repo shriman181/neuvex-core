@@ -1,0 +1,19 @@
+{
+  "name": "neuvex-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Neuvex core: control plane, gateway and sandbox infrastructure on Neon Postgres.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "db:generate": "npm run generate -w @neuvex/db --",
+    "db:migrate": "npm run migrate -w @neuvex/db",
+    "db:check": "npm run check -w @neuvex/db",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

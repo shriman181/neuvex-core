@@ -1,0 +1,40 @@
+name: Database migrate (production)
+
+# Applies new migrations to the production branch after they are merged to main.
+# Runs one at a time and never cancels a migration that has started.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/db/migrations/**"
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrate-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check migration files
+        run: npm run db:check
+
+      - name: Run migrations on production
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: npm run db:migrate

@@ -1,0 +1,27 @@
+{
+  "name": "@neuvex/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Neuvex control-plane schema, migrations and database client.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "check": "drizzle-kit check",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  }
+}
