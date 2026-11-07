@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "neuvex-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // Audit maintenance every 6 hours. Also keeps the Neon branch from being archived.
+  "triggers": { "crons": ["17 */6 * * *"] }
+  // DATABASE_URL is a secret, set by the deploy workflow from GATEWAY_DATABASE_URL.
+}

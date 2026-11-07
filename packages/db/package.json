@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Neuvex control-plane schema, migrations and database client.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",
@@ -13,20 +14,18 @@
     "check": "drizzle-kit check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "create-key": "tsx scripts/create-key.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
-    "drizzle-orm": "^0.45.4"
+    "drizzle-orm": "^0.45.4",
+    "@neuvex/contracts": "*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.15",
-    "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
-    "pg": "^8.23.1",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "pg": "^8.23.1"
   }
 }

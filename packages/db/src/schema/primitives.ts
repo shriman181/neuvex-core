@@ -9,28 +9,12 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { ContractRules } from "@neuvex/contracts";
 import { control } from "./namespace.js";
 import { createdAt, tenantIsolation } from "./tenancy.js";
 import { vendors } from "./vendors.js";
 
-/**
- * What a contract allows. Anything not listed in `allow` is denied; `deny` wins over
- * `allow`; `redact` names fields stripped before data reaches an agent.
- */
-export interface ContractRules {
-  allow: {
-    actions: string[];
-    fields?: string[];
-    scopes?: string[];
-  };
-  deny?: {
-    actions?: string[];
-    fields?: string[];
-  };
-  redact?: string[];
-  /** Calls per minute per end user. */
-  rateLimit?: number;
-}
+export type { ContractRules };
 
 /** Each capability a vendor exposes, for example `email.list_messages`. */
 export const primitives = control.table(

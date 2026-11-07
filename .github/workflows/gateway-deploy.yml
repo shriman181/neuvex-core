@@ -1,0 +1,105 @@
+name: Gateway deploy
+
+# Deploys the gateway Worker to Cloudflare after changes reach main. Migrations run
+# first, so the Worker never goes live ahead of the database objects it calls.
+# Then a smoke test checks the live Worker, including its connection to Neon.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/gateway/**"
+      - "packages/contracts/**"
+      - "packages/db/migrations/**"
+      - "package-lock.json"
+      - ".github/workflows/gateway-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: gateway-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    # Same group as the "Database migrate" workflow, so the two never run at once.
+    concurrency:
+      group: db-migrate-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run migrations on production (no-op if already applied)
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: npm run db:migrate
+
+  deploy:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Deploy to Cloudflare
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/gateway
+          packageManager: npm
+          secrets: |
+            DATABASE_URL
+          command: deploy
+        env:
+          DATABASE_URL: ${{ secrets.GATEWAY_DATABASE_URL }}
+
+      # /health proves the Worker is up. A check with a made-up key must come back
+      # 401: that answer needs a database lookup, so a 500 means the Worker cannot
+      # reach Neon (wrong GATEWAY_DATABASE_URL, or missing grants).
+      - name: Smoke test
+        env:
+          GATEWAY_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -z "$GATEWAY_URL" ]; then
+            echo "::warning::Wrangler reported no deployment URL; skipping the smoke test."
+            exit 0
+          fi
+          echo "Gateway: $GATEWAY_URL"
+          curl -fsS --retry 5 --retry-all-errors --retry-delay 3 "$GATEWAY_URL/health"
+          echo
+          status=$(curl -sS -o /tmp/check.json -w '%{http_code}' -X POST "$GATEWAY_URL/v1/check" \
+            -H "authorization: Bearer nvx_smoke_test_not_a_real_key" \
+            -H "content-type: application/json" \
+            -d '{"primitive":"email.list_messages","action":"read"}')
+          cat /tmp/check.json; echo
+          if [ "$status" != "401" ]; then
+            echo "::error::Expected 401 from /v1/check with a fake key, got $status."
+            exit 1
+          fi
+          echo "### Gateway deployed: $GATEWAY_URL" >> "$GITHUB_STEP_SUMMARY"
