@@ -10,7 +10,7 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate",
+    "migrate": "tsx scripts/migrate.ts",
     "check": "drizzle-kit check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

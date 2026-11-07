@@ -86,6 +86,7 @@ neuvex-core/
     src/testing.ts             createTestDatabase(): in-memory Postgres set up like Neon
     migrations/                SQL migrations (generated, plus hand-written SQL)
     test/                      migration, isolation and audit tests on in-memory Postgres
+    scripts/migrate.ts         applies migrations; prints Postgres's real error if one fails
     scripts/seed-demo.ts       demo vendor with three email primitives
     scripts/create-key.ts      a vendor API key, printed once
   packages/contracts/          contract rules: evaluate() a call, shape() the data
