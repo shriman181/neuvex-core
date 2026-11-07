@@ -1,0 +1,14 @@
+{
+  "name": "@neuvex/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Neuvex contract engine: decide calls to primitives and shape data for agents.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

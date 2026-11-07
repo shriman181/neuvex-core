@@ -1,9 +1,12 @@
 // Seeds the demo vendor used for the email-as-task-list / email-as-calendar demo:
 // one vendor, three email primitives, and version 1 of each contract.
 //
-// Run against the dev branch only:
+// Run against the dev branch:
 //   set -a; source .env; set +a
 //   npm run db:seed:demo
+//
+// To try the deployed gateway, production needs the demo vendor too. That takes an
+// explicit flag:  npm run db:seed:demo -- --allow-production
 //
 // Safe to run more than once: existing rows are left as they are.
 
@@ -15,8 +18,10 @@ import { contractVersions, primitives, vendors } from "../src/schema/tables.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set. Point it at the dev branch.");
-if (/ep-wispy-brook-aort84i4/.test(url)) {
-  throw new Error("Refusing to seed production. Use the dev branch's connection string.");
+if (/ep-wispy-brook-aort84i4/.test(url) && !process.argv.includes("--allow-production")) {
+  throw new Error(
+    "Refusing to seed production. Use the dev branch, or pass --allow-production to add the demo vendor there.",
+  );
 }
 
 const DEMO: Array<{ name: string; description: string; rules: ContractRules }> = [

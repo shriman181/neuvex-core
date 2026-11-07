@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "db:generate": "npm run generate -w @neuvex/db --",
@@ -16,6 +17,15 @@
     "db:check": "npm run check -w @neuvex/db",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "db:seed:demo": "npm run seed:demo -w @neuvex/db"
+    "db:seed:demo": "npm run seed:demo -w @neuvex/db --",
+    "gateway:dev": "npm run dev -w @neuvex/gateway",
+    "gateway:deploy": "npm run deploy -w @neuvex/gateway",
+    "db:create-key": "npm run create-key -w @neuvex/db --"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.6",
+    "vitest": "^5.1.0",
+    "tsx": "^4.23.15"
   }
 }
