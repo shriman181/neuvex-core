@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neuvex Playground: an AI agent, governed live on Neon</title>
+<meta name="description" content="Play an AI agent against the real Neuvex gateway. Contracts are read from Neon Postgres, data is shaped, and every decision lands in an append-only audit log in Neon.">
+<link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/inter-tight.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="https://neuvex.cloud">
+    <svg class="mark" viewBox="0 0 18 18" aria-hidden="true"><rect x="1" y="1" width="7" height="16" rx="2" fill="#4F46E5"/><rect x="10" y="1" width="7" height="16" rx="2" fill="#10B981"/><path d="M4.5 3.5 L13.5 14.5" stroke="#fff" stroke-width="2.2"/></svg>
+    neuvex <span class="product">Playground</span>
+  </a>
+  <nav>
+    <span class="live" id="live"><i></i> Live on Neon</span>
+    <a href="https://github.com/shriman181/neuvex-core">Source on GitHub</a>
+    <a href="https://neuvex.cloud">neuvex.cloud</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="eyebrow">Neuvex Playground</p>
+    <h1>Be the AI agent. Watch Neuvex govern you, live on Neon.</h1>
+    <p class="lede">Inboxly is a demo email app on Neuvex. It lets AI agents use three primitives, each under a contract stored in Neon Postgres. Pick a scenario and send it: the real Neuvex gateway reads the contract from Neon, cuts the data down to what you may see, and appends its decision to an audit log in Neon.</p>
+    <dl class="facts">
+      <div><dt>Database</dt><dd>Neon serverless Postgres <span id="pg-version" class="mono"></span></dd></div>
+      <div><dt>Neon project</dt><dd><span class="mono">neuvex-control</span> · <span class="mono">production</span> branch</dd></div>
+      <div><dt>Region</dt><dd>AWS Asia Pacific (Singapore)</dd></div>
+      <div><dt>Today's audit partition</dt><dd id="partition" class="mono">audit.events</dd></div>
+    </dl>
+  </section>
+
+  <section class="workspace">
+    <aside class="scenarios">
+      <h2><span class="step">1</span> Pick a scenario</h2>
+      <ol id="scenario-list"></ol>
+    </aside>
+
+    <section class="console">
+      <div class="panel">
+        <div class="panel-head">
+          <h2><span class="step">2</span> Your request as the agent</h2>
+          <span class="hint">Edit it if you like</span>
+        </div>
+        <textarea id="request" spellcheck="false" aria-label="Request JSON"></textarea>
+        <div class="actions">
+          <button id="send" type="button">Send to the gateway</button>
+          <span id="status" class="status" role="status"></span>
+        </div>
+      </div>
+
+      <div class="panel result" id="result" hidden>
+        <div class="panel-head"><h2><span class="step">3</span> The gateway's decision</h2></div>
+        <div class="decision" id="decision"></div>
+        <ul class="timings" id="timings"></ul>
+        <div class="compare" id="compare">
+          <div><h3>What you sent</h3><pre id="sent" class="code"></pre></div>
+          <div><h3>What you got back</h3><pre id="got" class="code"></pre></div>
+        </div>
+        <p class="legend"><span class="removed-key">struck</span> removed by the contract · <span class="redacted-val">"[redacted]"</span> redacted by the contract</p>
+        <details><summary>Raw gateway response</summary><pre id="raw" class="code"></pre></details>
+      </div>
+    </section>
+
+    <aside class="neon-side">
+      <div class="panel">
+        <div class="panel-head"><h2>Contract in Neon</h2><span id="contract-name" class="mono tag"></span></div>
+        <pre id="contract" class="code small-code">Loading from Neon…</pre>
+        <p class="note">Latest version from <code>control.contract_versions</code>, read under row-level security that only shows Inboxly's rows.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Audit trail in Neon</h2><button id="refresh" class="ghost" type="button">Refresh</button></div>
+        <div class="counters">
+          <div><b id="c-allowed">–</b><span>allowed today</span></div>
+          <div><b id="c-denied">–</b><span>denied today</span></div>
+          <div><b id="c-total">–</b><span>all time</span></div>
+        </div>
+        <h3>Latest decisions</h3>
+        <ul id="recent" class="recent"><li class="empty">Loading from Neon…</li></ul>
+        <h3>Daily hash checkpoints</h3>
+        <ul id="checkpoints" class="checkpoints"><li class="empty">Loading from Neon…</li></ul>
+        <p class="note">Rows go to <code>audit.events</code>, an append-only table partitioned by day. Each finished day gets a SHA-256 checkpoint chained to the day before, re-verified against the rows on every read.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="how">
+    <h2>What happens on every click</h2>
+    <ol class="flow">
+      <li><b>Your browser</b><span>sends the agent's request to the Playground.</span></li>
+      <li><b>Playground Worker</b><span>adds the demo key on the server, limits each visitor, and calls the gateway over a Cloudflare service binding.</span></li>
+      <li><b>Neuvex gateway</b><span>checks the key and the contract, shapes the data, and answers.</span></li>
+      <li class="neon-step"><b>Neon Postgres</b><span>serves the key and contract under row-level security, then records the audit event, usage count and key use in one transaction.</span></li>
+    </ol>
+    <p class="how-note">Every change to this code is tested on its own Neon branch before it reaches production. <a href="https://github.com/shriman181/neuvex-core/pulls?q=is%3Apr">See the pull requests</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <span>Neuvex</span>
+  <a href="https://neuvex.cloud">neuvex.cloud</a>
+  <a href="https://github.com/shriman181/neuvex-core">github.com/shriman181/neuvex-core</a>
+  <span>Runs on Neon serverless Postgres, part of Databricks</span>
+</footer>
+</body>
+</html>

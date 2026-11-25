@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "neuvex-playground",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // The page. Anything that isn't a file (the /api routes) goes to the Worker.
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  // Calls the gateway Worker directly, without a public network hop.
+  "services": [{ "binding": "GATEWAY", "service": "neuvex-gateway" }],
+  // 30 requests a minute per visitor, so public traffic can't run up Neon compute.
+  "ratelimits": [{ "name": "LIMITER", "namespace_id": "2611", "simple": { "limit": 30, "period": 60 } }]
+  // PLAYGROUND_KEY is a secret, set by the deploy workflow.
+}

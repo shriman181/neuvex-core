@@ -72,7 +72,7 @@ afterAll(async () => {
 describe("migrations", () => {
   it("run as neuvex_migrator and are recorded", async () => {
     const [row] = await rows("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
-    expect(row).toEqual({ n: 6 });
+    expect(row).toEqual({ n: 7 });
   });
 
   it("make neuvex_migrator the owner of every control table", async () => {

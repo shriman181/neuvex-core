@@ -1,0 +1,927 @@
+{
+  "id": "ab6120b7-edc0-487f-98bc-981a2924c747",
+  "prevId": "fa2badaf-d7b5-474b-bc9f-59627734883a",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "control.agent_sessions": {
+      "name": "agent_sessions",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mold_id": {
+          "name": "mold_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "neon_branch_id": {
+          "name": "neon_branch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'provisioning'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "agent_sessions_vendor_status_idx": {
+          "name": "agent_sessions_vendor_status_idx",
+          "columns": [
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "agent_sessions_expires_idx": {
+          "name": "agent_sessions_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "agent_sessions_vendor_id_vendors_id_fk": {
+          "name": "agent_sessions_vendor_id_vendors_id_fk",
+          "tableFrom": "agent_sessions",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "tableTo": "vendors",
+          "schemaTo": "control",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "agent_sessions_mold_fk": {
+          "name": "agent_sessions_mold_fk",
+          "tableFrom": "agent_sessions",
+          "columnsFrom": [
+            "vendor_id",
+            "mold_id"
+          ],
+          "tableTo": "molds",
+          "schemaTo": "control",
+          "columnsTo": [
+            "vendor_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "agent_sessions_status_valid": {
+          "name": "agent_sessions_status_valid",
+          "value": "\"control\".\"agent_sessions\".\"status\" in ('provisioning', 'active', 'publishing', 'published', 'discarded', 'expired', 'failed')"
+        },
+        "agent_sessions_expiry_after_start": {
+          "name": "agent_sessions_expiry_after_start",
+          "value": "\"control\".\"agent_sessions\".\"expires_at\" > \"control\".\"agent_sessions\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.contract_versions": {
+      "name": "contract_versions",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "primitive_id": {
+          "name": "primitive_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rules": {
+          "name": "rules",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "contract_versions_primitive_fk": {
+          "name": "contract_versions_primitive_fk",
+          "tableFrom": "contract_versions",
+          "columnsFrom": [
+            "vendor_id",
+            "primitive_id"
+          ],
+          "tableTo": "primitives",
+          "schemaTo": "control",
+          "columnsTo": [
+            "vendor_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "contract_versions_primitive_version_key": {
+          "name": "contract_versions_primitive_version_key",
+          "columns": [
+            "vendor_id",
+            "primitive_id",
+            "version"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "contract_versions_version_positive": {
+          "name": "contract_versions_version_positive",
+          "value": "\"control\".\"contract_versions\".\"version\" > 0"
+        },
+        "contract_versions_rules_shape": {
+          "name": "contract_versions_rules_shape",
+          "value": "coalesce(jsonb_typeof(\"control\".\"contract_versions\".\"rules\" -> 'allow'), 'missing') = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.mold_versions": {
+      "name": "mold_versions",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mold_id": {
+          "name": "mold_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bundle_ref": {
+          "name": "bundle_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "migration_up": {
+          "name": "migration_up",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "migration_down": {
+          "name": "migration_down",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mold_versions_mold_fk": {
+          "name": "mold_versions_mold_fk",
+          "tableFrom": "mold_versions",
+          "columnsFrom": [
+            "vendor_id",
+            "mold_id"
+          ],
+          "tableTo": "molds",
+          "schemaTo": "control",
+          "columnsTo": [
+            "vendor_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mold_versions_mold_version_key": {
+          "name": "mold_versions_mold_version_key",
+          "columns": [
+            "vendor_id",
+            "mold_id",
+            "version"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "mold_versions_version_positive": {
+          "name": "mold_versions_version_positive",
+          "value": "\"control\".\"mold_versions\".\"version\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.molds": {
+      "name": "molds",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_user_ref": {
+          "name": "end_user_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_version": {
+          "name": "current_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "molds_vendor_user_idx": {
+          "name": "molds_vendor_user_idx",
+          "columns": [
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_user_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "molds_vendor_id_vendors_id_fk": {
+          "name": "molds_vendor_id_vendors_id_fk",
+          "tableFrom": "molds",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "tableTo": "vendors",
+          "schemaTo": "control",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "molds_vendor_id_id_key": {
+          "name": "molds_vendor_id_id_key",
+          "columns": [
+            "vendor_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "molds_end_user_ref_not_email": {
+          "name": "molds_end_user_ref_not_email",
+          "value": "position('@' in \"control\".\"molds\".\"end_user_ref\") = 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.primitives": {
+      "name": "primitives",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "primitives_vendor_id_vendors_id_fk": {
+          "name": "primitives_vendor_id_vendors_id_fk",
+          "tableFrom": "primitives",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "tableTo": "vendors",
+          "schemaTo": "control",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "primitives_vendor_name_key": {
+          "name": "primitives_vendor_name_key",
+          "columns": [
+            "vendor_id",
+            "name"
+          ],
+          "nullsNotDistinct": false
+        },
+        "primitives_vendor_id_id_key": {
+          "name": "primitives_vendor_id_id_key",
+          "columns": [
+            "vendor_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "primitives_name_format": {
+          "name": "primitives_name_format",
+          "value": "\"control\".\"primitives\".\"name\" ~ '^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.usage_daily": {
+      "name": "usage_daily",
+      "schema": "control",
+      "columns": {
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "molded_sessions": {
+          "name": "molded_sessions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "primitive_calls": {
+          "name": "primitive_calls",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "usage_daily_vendor_id_vendors_id_fk": {
+          "name": "usage_daily_vendor_id_vendors_id_fk",
+          "tableFrom": "usage_daily",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "tableTo": "vendors",
+          "schemaTo": "control",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "usage_daily_pkey": {
+          "name": "usage_daily_pkey",
+          "columns": [
+            "vendor_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "usage_daily_counts_non_negative": {
+          "name": "usage_daily_counts_non_negative",
+          "value": "\"control\".\"usage_daily\".\"molded_sessions\" >= 0 and \"control\".\"usage_daily\".\"primitive_calls\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.vendor_keys": {
+      "name": "vendor_keys",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_prefix": {
+          "name": "key_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "vendor_keys_vendor_idx": {
+          "name": "vendor_keys_vendor_idx",
+          "columns": [
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "vendor_keys_vendor_id_vendors_id_fk": {
+          "name": "vendor_keys_vendor_id_vendors_id_fk",
+          "tableFrom": "vendor_keys",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "tableTo": "vendors",
+          "schemaTo": "control",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "vendor_keys_key_hash_key": {
+          "name": "vendor_keys_key_hash_key",
+          "columns": [
+            "key_hash"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "vendor_id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "vendor_keys_hash_format": {
+          "name": "vendor_keys_hash_format",
+          "value": "\"control\".\"vendor_keys\".\"key_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "control.vendors": {
+      "name": "vendors",
+      "schema": "control",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'developer'"
+        },
+        "neon_project_id": {
+          "name": "neon_project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "neon_production_branch_id": {
+          "name": "neon_production_branch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "neon_fixtures_branch_id": {
+          "name": "neon_fixtures_branch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gateway_db_url_enc": {
+          "name": "gateway_db_url_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "template_version": {
+          "name": "template_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "provision_status": {
+          "name": "provision_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "provision_error": {
+          "name": "provision_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provisioned_at": {
+          "name": "provisioned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "vendors_slug_key": {
+          "name": "vendors_slug_key",
+          "columns": [
+            "slug"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "id = nullif(current_setting('app.vendor_id', true), '')::uuid",
+          "withCheck": "id = nullif(current_setting('app.vendor_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "vendors_slug_format": {
+          "name": "vendors_slug_format",
+          "value": "\"control\".\"vendors\".\"slug\" ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'"
+        },
+        "vendors_tier_valid": {
+          "name": "vendors_tier_valid",
+          "value": "\"control\".\"vendors\".\"tier\" in ('developer', 'startup', 'scale', 'enterprise')"
+        },
+        "vendors_provision_status_valid": {
+          "name": "vendors_provision_status_valid",
+          "value": "\"control\".\"vendors\".\"provision_status\" in ('pending', 'provisioning', 'ready', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

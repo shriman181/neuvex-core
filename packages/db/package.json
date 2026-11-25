@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed:demo": "tsx scripts/seed-demo.ts",
-    "create-key": "tsx scripts/create-key.ts"
+    "create-key": "tsx scripts/create-key.ts",
+    "ensure-key": "tsx scripts/ensure-key.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

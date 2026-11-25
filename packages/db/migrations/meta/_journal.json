@@ -43,6 +43,13 @@
       "when": 1794063128298,
       "tag": "0005_provisioner_access",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795648765944,
+      "tag": "0006_audit_summary",
+      "breakpoints": true
     }
   ]
 }

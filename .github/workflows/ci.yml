@@ -40,3 +40,7 @@ jobs:
       - name: Bundle the gateway Worker
         working-directory: apps/gateway
         run: npx wrangler deploy --dry-run --outdir dist
+
+      - name: Bundle the Playground Worker
+        working-directory: apps/playground
+        run: npx wrangler deploy --dry-run --outdir dist

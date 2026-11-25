@@ -1,8 +1,12 @@
 # neuvex-core
 
-The core of [Neuvex](https://neuvex.cloud): the control plane, gateway and sandbox infrastructure, built on Neon Postgres and Cloudflare Workers.
+The core of [Neuvex](https://neuvex.cloud): infrastructure that lets AI coding agents safely customize the software people use, while the software company keeps control of its data and logic.
 
-The full design is in the [Neuvex on Neon infrastructure plan](https://claude.ai/artifact/LNs4S9XGf3bwAKnevrVgPN). This repo is at **Phase 3 (vendor projects and sandboxes), part 1**: the control plane on Neon, a contract engine, the gateway Worker with its audit log, and a provisioner that gives each vendor its own Neon project with a fixtures branch. Next: the gateway writing audit events into each vendor's project (part 2), then sandbox branches, publish and rollback (part 3).
+**Try it live: [Neuvex Playground](https://neuvex-playground.neuvex.workers.dev).** Play an AI agent against the real gateway. Contracts come from Neon Postgres, the data you get back is cut down and redacted, and every decision lands in an append-only audit log in Neon.
+
+Every Neuvex database is a [Neon](https://neon.com) project or branch (Neon is part of Databricks): one Neon project for the control plane, one per vendor, and a Neon branch for every pull request and every agent sandbox. The Workers run on Cloudflare.
+
+**Status.** In production: the control plane, the gateway with its audit log, a Neon branch per pull request, and the Playground. Built and merged: a Neon project per vendor with a schema-only fixtures branch. Next: each vendor's audit log in its own project, then agent sandboxes, publish and rollback.
 
 ## Control plane
 
@@ -58,6 +62,15 @@ It checks the key (scope `gateway:check`), loads the latest contract version for
 | Bad or missing key / missing scope | `401` / `403` (not audited: there is no vendor yet) |
 | Bad request | `400`, or `413` over 1 MB |
 
+Two read endpoints, each needing its own scope:
+
+| Endpoint | Scope | Returns |
+| --- | --- | --- |
+| `GET /v1/contracts` | `contracts:read` | Every primitive of the vendor with its latest contract version and rules |
+| `GET /v1/audit/summary?recent=12` | `audit:read` | Today's allowed and denied counts, the total, recent decisions (no end-user references or free text), the last 7 daily checkpoints re-verified against the rows, and today's partition |
+
+Every response carries a `Server-Timing` header with the time spent in Neon (`neon;dur=…`) and in total.
+
 Every decision with a known vendor is written to the audit log, daily usage is counted, and the key's `last_used_at` is updated, all in one transaction after the response is sent. `GET /health` answers without touching the database. Rate limits in contracts are stored but not yet enforced.
 
 The Worker talks to Neon over HTTPS with Neon's serverless driver, as `neuvex_gateway`. Every query runs inside a transaction that first sets `app.vendor_id`, so row-level security limits it to the caller's vendor.
@@ -104,6 +117,16 @@ It's safe to run again. After a failure (`provision_status = 'failed'`, with `pr
 
 Run it from GitHub: **Actions → Provision vendor → Run workflow**, then enter the slug.
 
+## Playground
+
+A public page (`apps/playground`) where anyone can play an AI agent for Inboxly, the demo vendor, against the real gateway on Neon. It's live at [neuvex-playground.neuvex.workers.dev](https://neuvex-playground.neuvex.workers.dev).
+
+- The page is static files. Its `/api` routes run in a small Worker that adds a demo key on the server, never in the browser. The key has scopes `gateway:check`, `contracts:read` and `audit:read` for `inboxly-demo` only.
+- The Worker calls the gateway over a Cloudflare service binding, with no public network hop.
+- Each visitor gets 30 requests a minute, so public traffic can't run up Neon compute.
+- Every request uses the fixed end-user reference `playground_visitor`, and the audit panel shows only fixed-shape fields, so nothing a visitor types is shown to anyone else.
+- `npm run playground:preview` runs the whole thing locally (page, Playground and gateway code, every migration) on in-memory Postgres at `http://localhost:8790`.
+
 ## Layout
 
 ```
@@ -120,6 +143,7 @@ neuvex-core/
     scripts/migrate.ts         applies migrations; prints Postgres's real error if one fails
     scripts/seed-demo.ts       demo vendor with three email primitives
     scripts/create-key.ts      a vendor API key, printed once
+    scripts/ensure-key.ts      registers a key you already hold (the Playground's), idempotently
   packages/contracts/          contract rules: evaluate() a call, shape() the data
   packages/sql/                the Db interface: Neon over HTTP; PGlite in tests
   packages/neon-api/           Neon API client: projects, branches, connection strings, schema diff
@@ -131,11 +155,15 @@ neuvex-core/
     src/store.ts               the gateway's SQL, over Neon's HTTP driver
     src/index.ts               Worker entry: fetch, and the 6-hourly cron
     test/                      routes with a fake store; the real SQL on in-memory Postgres
+  apps/playground/             the public Playground: a page plus a small Worker in front of the gateway
+    public/                    the page (HTML, CSS, script, fonts)
+    src/app.ts                 /api routes: demo key, rate limit, service binding to the gateway
+    scripts/preview.mts        the whole Playground locally on in-memory Postgres
   .github/workflows/
     ci.yml                     typecheck, tests and a Worker bundle on every PR
     db-preview.yml             a Neon branch per pull request, migrated and diffed
     db-migrate.yml             migrates production after a merge to main
-    gateway-deploy.yml         migrates, deploys the gateway and smoke-tests it
+    deploy.yml                 migrates, deploys the gateway, then the Playground, smoke-testing each
     provision-vendor.yml       provisions one vendor's Neon project, started by hand
 ```
 
@@ -211,6 +239,7 @@ SELECT pg_temp.make_login('neuvex_provisioner');
 | `NEON_ORG_API_KEY` | Neon **organization** API key (can create projects). Used only by Provision vendor |
 | `NEON_ORG_ID` | The Neon organization ID, `org-...` |
 | `PROVISIONER_DATABASE_URL` | `neuvex_provisioner` on production's pooled address |
+| `PLAYGROUND_KEY` | The Playground's demo key: `nvx_play_` plus 48 random hex characters (`echo "nvx_play_$(openssl rand -hex 24)"`). Deploy registers its hash for `inboxly-demo` |
 | `VENDOR_DB_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts vendor connection strings; the gateway gets the same key in part 2. Never change it without re-encrypting |
 
 ## How a database change ships
@@ -220,9 +249,13 @@ SELECT pg_temp.make_login('neuvex_provisioner');
 3. Open a pull request. **Database preview** runs the tests, creates `preview/pr-<n>` from production, runs the migrations there as `neuvex_migrator`, and comments the schema diff on the PR.
 4. Merge. **Database migrate (production)** applies the migration to production. The preview branch is deleted when the PR closes.
 
-## How the gateway ships
+## How the gateway and Playground ship
 
-Merging changes to `apps/gateway`, `packages/contracts` or the migrations runs **Gateway deploy**: it applies any pending migrations first (sharing a lock with Database migrate), then typechecks, tests, deploys the Worker with its `DATABASE_URL` secret, and smoke-tests the live URL. The smoke test calls `/v1/check` with a made-up key and expects `401`, which proves the Worker can reach Neon as `neuvex_gateway`.
+Merging changes to `apps/`, `packages/contracts`, `packages/sql` or the migrations runs **Deploy**, in order:
+
+1. **Migrate.** Apply pending migrations to production (sharing a lock with Database migrate), and register the Playground's demo key.
+2. **Gateway.** Typecheck, test, deploy with its `DATABASE_URL` secret, and smoke-test. A made-up key must get `401`, which proves the Worker can reach Neon as `neuvex_gateway`.
+3. **Playground.** Deploy with `PLAYGROUND_KEY`, then smoke-test. The page must load, and `/api/contracts` and `/api/audit` must come back from Neon through the gateway.
 
 To try it end to end, add the demo vendor and a key to production, then call the gateway:
 
@@ -246,6 +279,8 @@ npm run db:migrate                           # apply migrations to DATABASE_URL
 npm run db:seed:demo                         # add the demo vendor (refuses production without --allow-production)
 npm run db:create-key -- <vendor-slug>       # make a vendor API key (add --scopes a,b to change scopes)
 npm run gateway:dev                          # run the gateway locally (needs apps/gateway/.dev.vars with DATABASE_URL)
+npm run playground:preview                   # the whole Playground locally on in-memory Postgres
+KEY=... npm run db:ensure-key -- <slug> --scopes a,b   # register a key you already hold
 npm run provision -w @neuvex/provisioner -- <slug>   # provision a vendor (needs the four env vars in the script's header)
 npm run typecheck
 ```
@@ -257,4 +292,6 @@ For local work, copy `.env.example` to `.env` and point `DATABASE_URL` at the `d
 - **"Load failed" or "Failed to connect to the database endpoint" in the Neon Console on Jio networks.** Jio's DNS refuses Neon database hostnames. Set the Mac's DNS to `1.1.1.1` and `8.8.8.8` (System Settings, Wi-Fi, Details, DNS).
 - **The production branch shows "Branch archived".** On the free plan Neon archives branches untouched for 24 hours once the project is 14 days old. The first query wakes it, which can take a minute. The gateway's 6-hourly cron keeps production awake once it is deployed.
 - **Migration 0003 fails with "neuvex_gateway has no USAGE on schema control".** Run the `WITH GRANT OPTION` line from the one-time setup as `neondb_owner`, then rerun the workflow.
-- **Gateway deploy's smoke test gets 500.** The Worker cannot query Neon: check `GATEWAY_DATABASE_URL` (role `neuvex_gateway`, pooled host) and that migration 0003 ran. Worker logs are under Workers & Pages, `neuvex-gateway`, Logs.
+- **The Playground job fails at "Check the demo key is set".** Add the `PLAYGROUND_KEY` secret, then rerun Deploy.
+- **The Playground's smoke test gets 401 or 403 from `/api/contracts`.** The key isn't registered or lacks a scope: check the "Register the Playground's demo key" step in the migrate job.
+- **Deploy's gateway smoke test gets 500.** The Worker cannot query Neon: check `GATEWAY_DATABASE_URL` (role `neuvex_gateway`, pooled host) and that migration 0003 ran. Worker logs are under Workers & Pages, `neuvex-gateway`, Logs.

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ContractRules } from "@neuvex/contracts";
-import { CHECK_SCOPE, handle, sha256Hex, type Deps } from "../src/app.js";
+import { AUDIT_SCOPE, CHECK_SCOPE, CONTRACTS_SCOPE, handle, sha256Hex, type Deps } from "../src/app.js";
 import type { AuditEvent, ContractLookup, KeyRecord, Store } from "../src/store.js";
 
 const VENDOR = "11111111-1111-4111-8111-111111111111";
 const GOOD_KEY = "nvx_test_good";
 const NO_SCOPE_KEY = "nvx_test_noscope";
+const READ_KEY = "nvx_test_reader";
 
 const listRules: ContractRules = {
   allow: { actions: ["read"], fields: ["id", "subject", "from", "snippet"] },
@@ -34,6 +35,23 @@ function fakeStore(overrides: Partial<Store> = {}) {
     async runMaintenance() {
       return { ok: true };
     },
+    async listContracts(vendorId) {
+      expect(vendorId).toBe(VENDOR);
+      return [
+        { primitive: "email.draft", description: null, version: null, rules: null },
+        { primitive: "email.list_messages", description: "List messages", version: 3, rules: listRules },
+      ];
+    },
+    async auditSummary(vendorId, recent) {
+      expect(vendorId).toBe(VENDOR);
+      return {
+        today: { date: "2026-11-26", allowed: 2, denied: 1 },
+        total: 3,
+        recent: [],
+        checkpoints: [{ day: "2026-11-25", events: 3, hash: "0123456789abcdef", verified: true }],
+        storage: { table: "audit.events", partition: "audit.events_20261126", postgres: `18.1 (recent=${recent})` },
+      };
+    },
     ...overrides,
   };
   return { store, keys, calls };
@@ -43,6 +61,7 @@ async function setup(overrides: Partial<Store> = {}) {
   const f = fakeStore(overrides);
   f.keys.set(await sha256Hex(GOOD_KEY), { vendorId: VENDOR, keyId: "key-1", scopes: [CHECK_SCOPE, "email:read"] });
   f.keys.set(await sha256Hex(NO_SCOPE_KEY), { vendorId: VENDOR, keyId: "key-2", scopes: ["email:read"] });
+  f.keys.set(await sha256Hex(READ_KEY), { vendorId: VENDOR, keyId: "key-3", scopes: [CONTRACTS_SCOPE, AUDIT_SCOPE] });
   const pending: Promise<unknown>[] = [];
   const deps: Deps = {
     store: f.store,
@@ -180,5 +199,56 @@ describe("gateway", () => {
     const res = await call({ primitive: "email.list_messages", action: "read" });
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: "internal_error" });
+  });
+
+  it("reports time spent in Neon in a Server-Timing header", async () => {
+    const { deps } = await setup();
+    const res = await handle(
+      new Request("https://gw.test/v1/check", {
+        method: "POST",
+        headers: { authorization: `Bearer ${GOOD_KEY}` },
+        body: JSON.stringify({ primitive: "email.list_messages", action: "read" }),
+      }),
+      deps,
+    );
+    expect(res.headers.get("server-timing")).toMatch(/^neon;dur=\d+(\.\d)?;desc="Neon Postgres", total;dur=\d+(\.\d)?$/);
+  });
+});
+
+describe("read endpoints", () => {
+  const get = async (deps: Deps, path: string, key: string | null) =>
+    handle(new Request(`https://gw.test${path}`, key ? { headers: { authorization: `Bearer ${key}` } } : {}), deps);
+
+  it("lists the vendor's primitives with their latest contracts", async () => {
+    const { deps } = await setup();
+    const res = await get(deps, "/v1/contracts", READ_KEY);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { contracts: Array<{ primitive: string; version: number | null }> };
+    expect(body.contracts.map((c) => [c.primitive, c.version])).toEqual([
+      ["email.draft", null],
+      ["email.list_messages", 3],
+    ]);
+    expect(res.headers.get("server-timing")).toContain("neon;dur=");
+  });
+
+  it("returns the vendor's audit summary", async () => {
+    const { deps } = await setup();
+    const res = await get(deps, "/v1/audit/summary?recent=5", READ_KEY);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; storage: { postgres: string } };
+    expect(body.total).toBe(3);
+    expect(body.storage.postgres).toContain("recent=5");
+    expect((await get(deps, "/v1/audit/summary?recent=99", READ_KEY)).status).toBe(400);
+  });
+
+  it("needs a key with the right scope", async () => {
+    const { deps } = await setup();
+    expect((await get(deps, "/v1/contracts", null)).status).toBe(401);
+    expect((await get(deps, "/v1/contracts", "nvx_wrong")).status).toBe(401);
+    const noScope = await get(deps, "/v1/audit/summary", GOOD_KEY);
+    expect(noScope.status).toBe(403);
+    expect(((await noScope.json()) as { detail: string }).detail).toBe(AUDIT_SCOPE);
+    const post = await handle(new Request("https://gw.test/v1/contracts", { method: "POST" }), deps);
+    expect(post.status).toBe(405);
   });
 });

@@ -1,0 +1,175 @@
+name: Deploy
+
+# Deploys the gateway and the Playground to Cloudflare after changes reach main, in
+# order: migrations on Neon first (so no Worker goes live ahead of the database objects
+# it calls), then the gateway, then the Playground, which calls the gateway. Smoke tests
+# check each live Worker, including its connection to Neon.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/gateway/**"
+      - "apps/playground/**"
+      - "packages/contracts/**"
+      - "packages/sql/**"
+      - "packages/db/migrations/**"
+      - "package-lock.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    # Same group as the "Database migrate" workflow, so the two never run at once.
+    concurrency:
+      group: db-migrate-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run migrations on production (no-op if already applied)
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+        run: npm run db:migrate
+
+      # The Playground's demo key: only its hash goes to Neon. Safe to rerun.
+      - name: Register the Playground's demo key
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATOR_DATABASE_URL }}
+          KEY: ${{ secrets.PLAYGROUND_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::PLAYGROUND_KEY is not set, so the Playground can't be deployed yet."
+            exit 0
+          fi
+          npm run db:ensure-key -- inboxly-demo --scopes gateway:check,contracts:read,audit:read
+
+  gateway:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Deploy the gateway
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/gateway
+          packageManager: npm
+          secrets: |
+            DATABASE_URL
+          command: deploy
+        env:
+          DATABASE_URL: ${{ secrets.GATEWAY_DATABASE_URL }}
+
+      # /health proves the Worker is up. A check with a made-up key must come back
+      # 401: that answer needs a database lookup, so a 500 means the Worker cannot
+      # reach Neon (wrong GATEWAY_DATABASE_URL, or missing grants).
+      - name: Smoke test
+        env:
+          GATEWAY_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -z "$GATEWAY_URL" ]; then
+            echo "::warning::Wrangler reported no deployment URL; skipping the smoke test."
+            exit 0
+          fi
+          echo "Gateway: $GATEWAY_URL"
+          curl -fsS --retry 5 --retry-all-errors --retry-delay 3 "$GATEWAY_URL/health"
+          echo
+          status=$(curl -sS -o /tmp/check.json -w '%{http_code}' -X POST "$GATEWAY_URL/v1/check" \
+            -H "authorization: Bearer nvx_smoke_test_not_a_real_key" \
+            -H "content-type: application/json" \
+            -d '{"primitive":"email.list_messages","action":"read"}')
+          cat /tmp/check.json; echo
+          if [ "$status" != "401" ]; then
+            echo "::error::Expected 401 from /v1/check with a fake key, got $status."
+            exit 1
+          fi
+          echo "### Gateway deployed: $GATEWAY_URL" >> "$GITHUB_STEP_SUMMARY"
+
+  playground:
+    needs: gateway
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check the demo key is set
+        env:
+          KEY: ${{ secrets.PLAYGROUND_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Add the PLAYGROUND_KEY repository secret (see README, Playground), then rerun."
+            exit 1
+          fi
+
+      - name: Deploy the Playground
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/playground
+          packageManager: npm
+          secrets: |
+            PLAYGROUND_KEY
+          command: deploy
+        env:
+          PLAYGROUND_KEY: ${{ secrets.PLAYGROUND_KEY }}
+
+      # The page must load, and /api/contracts must come back from Neon through the
+      # gateway: that proves the service binding, the demo key and its scopes.
+      - name: Smoke test
+        env:
+          PLAYGROUND_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -z "$PLAYGROUND_URL" ]; then
+            echo "::warning::Wrangler reported no deployment URL; skipping the smoke test."
+            exit 0
+          fi
+          echo "Playground: $PLAYGROUND_URL"
+          curl -fsS --retry 5 --retry-all-errors --retry-delay 3 "$PLAYGROUND_URL/" | grep -q "Neuvex Playground"
+          curl -fsS --retry 3 --retry-all-errors --retry-delay 3 "$PLAYGROUND_URL/api/contracts" > /tmp/contracts.json
+          grep -q '"email.list_messages"' /tmp/contracts.json || { cat /tmp/contracts.json; echo "::error::Contracts didn't come back from Neon."; exit 1; }
+          curl -fsS "$PLAYGROUND_URL/api/audit" > /tmp/audit.json
+          grep -q '"audit.events' /tmp/audit.json || { cat /tmp/audit.json; echo "::error::The audit summary didn't come back from Neon."; exit 1; }
+          echo "### Playground live: $PLAYGROUND_URL" >> "$GITHUB_STEP_SUMMARY"
