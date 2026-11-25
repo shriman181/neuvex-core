@@ -124,4 +124,24 @@ describe("store against the migrated database", () => {
     expect(result).toEqual(expect.objectContaining({}));
     expect(typeof result).toBe("object");
   });
+
+  it("lists contracts and summarizes the audit log, for its own vendor only", async () => {
+    const store = createStore(gatewayDb(pg));
+    const a = await store.listContracts(VENDOR_A);
+    expect(a.map((c) => [c.primitive, c.version])).toEqual([
+      ["email.draft", null],
+      ["email.list_messages", 2],
+    ]);
+    expect(a[1]?.rules?.redact).toEqual(["from.email"]);
+    expect((await store.listContracts(VENDOR_B)).map((c) => c.primitive)).toEqual(["crm.list_contacts"]);
+
+    const summary = await store.auditSummary(VENDOR_A, 10);
+    expect(summary.total).toBeGreaterThanOrEqual(3);
+    expect(summary.today.allowed + summary.today.denied).toBe(summary.total);
+    expect(summary.recent[0]).toMatchObject({ primitive: expect.any(String), decision: expect.stringMatching(/allowed|denied/) });
+    expect(JSON.stringify(summary)).not.toContain("user_42");
+    expect(summary.storage.table).toBe("audit.events");
+    const b = await store.auditSummary(VENDOR_B, 10);
+    expect(b.recent.every((e) => e.reason === "unknown_primitive")).toBe(true);
+  });
 });

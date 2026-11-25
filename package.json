@@ -20,7 +20,9 @@
     "db:seed:demo": "npm run seed:demo -w @neuvex/db --",
     "gateway:dev": "npm run dev -w @neuvex/gateway",
     "gateway:deploy": "npm run deploy -w @neuvex/gateway",
-    "db:create-key": "npm run create-key -w @neuvex/db --"
+    "db:create-key": "npm run create-key -w @neuvex/db --",
+    "db:ensure-key": "npm run ensure-key -w @neuvex/db --",
+    "playground:preview": "npm run preview -w @neuvex/playground"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

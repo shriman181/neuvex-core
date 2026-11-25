@@ -1,0 +1,21 @@
+{
+  "name": "@neuvex/playground",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Neuvex Playground: a public page that drives the real gateway, on Neon, as a demo AI agent.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "preview": "tsx scripts/preview.mts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261107.1",
+    "@neuvex/db": "*",
+    "@neuvex/gateway": "*",
+    "@neuvex/sql": "*",
+    "wrangler": "^4.158.0"
+  }
+}
